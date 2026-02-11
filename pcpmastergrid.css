@@ -1,0 +1,236 @@
+﻿:root {
+        --bg: #f4f7f0;
+        --panel: #ffffff;
+        --line: #d9e2ce;
+        --text: #1f2c1f;
+        --muted: #647261;
+        --accent: #2f7b3f;
+        --accent-2: #184f28;
+        --warn: #f0aa33;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Poppins", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 0% 0%, #dbe8c5 0, transparent 35%),
+          radial-gradient(circle at 100% 100%, #ccddbe 0, transparent 35%),
+          var(--bg);
+      }
+
+      .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        box-shadow: 0 10px 28px rgba(39, 67, 36, 0.08);
+      }
+
+      .hero {
+        padding: 20px;
+        background:
+          linear-gradient(120deg, rgba(47, 123, 63, 0.14), rgba(255, 255, 255, 0.94)),
+          var(--panel);
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(24px, 3vw, 34px);
+      }
+
+      .hero p {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+
+      .panel {
+        padding: 14px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr 1fr auto;
+        gap: 10px;
+        align-items: end;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      label {
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+
+      input,
+      select,
+      button {
+        font: inherit;
+      }
+
+      input[type="file"],
+      select {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text);
+        padding: 10px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .btn-primary:hover {
+        background: var(--accent-2);
+      }
+
+      .btn-soft {
+        border: 1px solid var(--line);
+        background: #edf3e4;
+        color: var(--text);
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+      }
+
+      .kpi {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+      }
+
+      .kpi .value {
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .kpi .label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .warn {
+        margin-top: 10px;
+        border: 1px solid #f0ddb8;
+        background: #fff6e7;
+        color: #815817;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 13px;
+      }
+
+      .charts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .chart-card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .chart-card h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+
+      .chart-box {
+        height: 300px;
+      }
+
+      .compare-wrap {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: auto;
+      }
+
+      .compare-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 560px;
+      }
+
+      .table-wrap {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: auto;
+        max-height: 420px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 980px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 8px;
+        text-align: left;
+        font-size: 13px;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #f8fbf2;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      @media (max-width: 1080px) {
+        .controls {
+          grid-template-columns: 1fr 1fr 1fr 1fr;
+        }
+
+        .charts {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media print {
+        .controls button,
+        .controls input,
+        .controls select {
+          display: none;
+        }
+      }

@@ -1,0 +1,123 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCP Master Grid - Graficos por Coluna Q</title>
+    <link rel="stylesheet" href="pcpmastergrid.css" />
+  </head>
+  <body>
+    <div class="container">
+      <section class="hero">
+        <h1>PCP Master Grid</h1>
+        <p>
+          Envie uma ou mais planilhas. O sistema gera graficos sempre usando a coluna Q como ancora e le apenas
+          valores das celulas, nunca formulas.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="controls">
+          <div class="field">
+            <label for="files">Planilhas (xlsx, xls, csv)</label>
+            <input id="files" type="file" accept=".xlsx,.xls,.csv" multiple />
+          </div>
+          <div class="field">
+            <label for="metricColumn">Coluna numerica para soma por Q</label>
+            <select id="metricColumn">
+              <option value="">Selecione apos carregar</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="qFilter">Filtrar por valor da coluna Q</label>
+            <select id="qFilter">
+              <option value="">Todos os valores de Q</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="azColumn">Coluna (A-Z) para filtro</label>
+            <select id="azColumn">
+              <option value="">Sem filtro A-Z</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="azValue">Valor da coluna escolhida</label>
+            <select id="azValue">
+              <option value="">Todos os valores</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="compareBy">Comparar lado a lado por</label>
+            <select id="compareBy">
+              <option value="arquivo">Arquivo</option>
+              <option value="aba">Aba</option>
+              <option value="arquivo_aba">Arquivo + Aba</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="maxRows">Linhas de visualizacao</label>
+            <select id="maxRows">
+              <option value="30">30</option>
+              <option value="100" selected>100</option>
+              <option value="300">300</option>
+              <option value="1000">1000</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="process" class="btn-primary" type="button">Gerar graficos</button>
+            <button id="download" class="btn-soft" type="button">Exportar resumo</button>
+          </div>
+        </div>
+
+        <div class="kpis" style="margin-top: 12px;">
+          <article class="kpi"><div class="value" id="kpiFiles">0</div><div class="label">Arquivos</div></article>
+          <article class="kpi"><div class="value" id="kpiRows">0</div><div class="label">Linhas lidas</div></article>
+          <article class="kpi"><div class="value" id="kpiQ">0</div><div class="label">Linhas validas (Q)</div></article>
+          <article class="kpi"><div class="value" id="kpiGroups">0</div><div class="label">Grupos unicos em Q</div></article>
+          <article class="kpi"><div class="value" id="kpiFormula">0</div><div class="label">Formulas ignoradas</div></article>
+        </div>
+
+        <div class="warn" id="formulaNotice">
+          Regra ativa: somente dados. Se uma celula tiver formula, o texto da formula e descartado; apenas o valor
+          existente na celula e considerado.
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="charts">
+          <article class="chart-card">
+            <h3>Contagem por coluna Q</h3>
+            <div class="chart-box"><canvas id="chartCount"></canvas></div>
+          </article>
+          <article class="chart-card">
+            <h3>Participacao por coluna Q</h3>
+            <div class="chart-box"><canvas id="chartShare"></canvas></div>
+          </article>
+          <article class="chart-card">
+            <h3>Soma da metrica por coluna Q</h3>
+            <div class="chart-box"><canvas id="chartMetric"></canvas></div>
+          </article>
+          <article class="chart-card">
+            <h3>Comparacao lado a lado</h3>
+            <div class="chart-box"><canvas id="chartCompare"></canvas></div>
+          </article>
+        </div>
+        <div class="compare-wrap">
+          <table class="compare-table" id="compareTable"></table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 style="margin: 0 0 8px;">Tabela de dados (somente valores)</h2>
+        <div class="muted" id="tableMeta">Nenhum dado carregado.</div>
+        <div class="table-wrap">
+          <table id="dataTable"></table>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="pcpmastergrid.js"></script>
+  </body>
+</html>
