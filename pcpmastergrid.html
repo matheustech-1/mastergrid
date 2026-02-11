@@ -21,6 +21,13 @@
           <div class="field">
             <label for="files">Planilhas (xlsx, xls, csv)</label>
             <input id="files" type="file" accept=".xlsx,.xls,.csv" multiple />
+            <div id="selectedFilesWrap" class="selected-files" hidden>
+              <div class="selected-files-head">
+                <span>Planilhas selecionadas</span>
+                <button id="clearSelection" type="button" class="btn-link">Limpar selecao</button>
+              </div>
+              <ul id="selectedFilesList"></ul>
+            </div>
           </div>
           <div class="field">
             <label for="metricColumn">Coluna numerica para soma por Q</label>
@@ -63,9 +70,10 @@
               <option value="1000">1000</option>
             </select>
           </div>
-          <div style="display:flex; gap:8px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button id="process" class="btn-primary" type="button">Gerar graficos</button>
             <button id="download" class="btn-soft" type="button">Exportar resumo</button>
+            <button id="clearData" class="btn-soft" type="button">Limpar dados</button>
           </div>
         </div>
 
