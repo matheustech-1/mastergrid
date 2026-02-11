@@ -25,6 +25,7 @@ const els = {
   clearData: document.getElementById("clearData"),
   metricColumn: document.getElementById("metricColumn"),
   qFilter: document.getElementById("qFilter"),
+  sheetFilter: document.getElementById("sheetFilter"),
   azColumn: document.getElementById("azColumn"),
   azValue: document.getElementById("azValue"),
   compareBy: document.getElementById("compareBy"),
@@ -443,6 +444,34 @@ function fillQFilterSelect(rows) {
   }
 }
 
+function fillSheetFilterSelect(rows) {
+  const previous = els.sheetFilter.value;
+  const values = Array.from(
+    new Set(
+      rows
+        .map((r) => String(r.__aba || "").trim())
+        .filter((value) => value)
+    )
+  ).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" }));
+
+  els.sheetFilter.innerHTML = "";
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "Todas as abas";
+  els.sheetFilter.appendChild(all);
+
+  values.forEach((value) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value;
+    els.sheetFilter.appendChild(opt);
+  });
+
+  if (values.includes(previous)) {
+    els.sheetFilter.value = previous;
+  }
+}
+
 function fillAzColumnSelect() {
   const previous = els.azColumn.value;
   els.azColumn.innerHTML = "";
@@ -505,9 +534,16 @@ function fillAzValueSelect(rows) {
 }
 
 function getRowsAfterQFilter(rows) {
+  const sheetRows = getRowsAfterSheetFilter(rows);
   const selectedQ = els.qFilter.value;
-  if (!selectedQ) return rows;
-  return rows.filter((row) => row.__Q === selectedQ);
+  if (!selectedQ) return sheetRows;
+  return sheetRows.filter((row) => row.__Q === selectedQ);
+}
+
+function getRowsAfterSheetFilter(rows) {
+  const selectedSheet = els.sheetFilter.value;
+  if (!selectedSheet) return rows;
+  return rows.filter((row) => row.__aba === selectedSheet);
 }
 
 function getFilteredRows(rows) {
@@ -530,6 +566,7 @@ function savePersistedState() {
     sourceFiles: state.sourceFiles,
     ui: {
       metricColumn: els.metricColumn.value,
+      sheetFilter: els.sheetFilter.value,
       qFilter: els.qFilter.value,
       azColumn: els.azColumn.value,
       azValue: els.azValue.value,
@@ -564,6 +601,12 @@ function applyUiFromSaved(savedUi) {
     els.metricColumn.value = String(savedUi.metricColumn);
   }
 
+  if (savedUi.sheetFilter && Array.from(els.sheetFilter.options).some((o) => o.value === String(savedUi.sheetFilter))) {
+    els.sheetFilter.value = String(savedUi.sheetFilter);
+  }
+
+  fillQFilterSelect(getRowsAfterSheetFilter(state.rows));
+
   if (savedUi.qFilter && Array.from(els.qFilter.options).some((o) => o.value === String(savedUi.qFilter))) {
     els.qFilter.value = String(savedUi.qFilter);
   }
@@ -594,7 +637,8 @@ function restorePersistedState() {
     state.sourceFiles = Array.isArray(parsed.sourceFiles) ? parsed.sourceFiles : [];
 
     fillMetricSelect(state.rows);
-    fillQFilterSelect(state.rows);
+    fillSheetFilterSelect(state.rows);
+    fillQFilterSelect(getRowsAfterSheetFilter(state.rows));
     fillAzColumnSelect();
     fillAzValueSelect(getRowsAfterQFilter(state.rows));
     applyUiFromSaved(parsed.ui || {});
@@ -625,6 +669,7 @@ function resetUiAfterClear() {
   els.tableMeta.textContent = "Nenhum dado carregado.";
 
   els.metricColumn.innerHTML = '<option value="">Selecione apos carregar</option>';
+  els.sheetFilter.innerHTML = '<option value="">Todas as abas</option>';
   els.qFilter.innerHTML = '<option value="">Todos os valores de Q</option>';
   els.azColumn.innerHTML = '<option value="">Sem filtro A-Z</option>';
   els.azValue.innerHTML = '<option value="">Todos os valores</option>';
@@ -718,7 +763,8 @@ els.process.addEventListener("click", async () => {
   try {
     await readFiles(files);
     fillMetricSelect(state.rows);
-    fillQFilterSelect(state.rows);
+    fillSheetFilterSelect(state.rows);
+    fillQFilterSelect(getRowsAfterSheetFilter(state.rows));
     fillAzColumnSelect();
     fillAzValueSelect(getRowsAfterQFilter(state.rows));
     runPipeline();
@@ -733,6 +779,13 @@ els.process.addEventListener("click", async () => {
 
 els.metricColumn.addEventListener("change", () => {
   if (!state.rows.length) return;
+  runPipeline();
+});
+
+els.sheetFilter.addEventListener("change", () => {
+  if (!state.rows.length) return;
+  fillQFilterSelect(getRowsAfterSheetFilter(state.rows));
+  fillAzValueSelect(getRowsAfterQFilter(state.rows));
   runPipeline();
 });
 
