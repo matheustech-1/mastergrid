@@ -6,6 +6,7 @@ const state = {
   headers: [],
   headerLetters: [],
   formulaIgnored: 0,
+  qFallbackUsed: false,
   sourceFiles: [],
   selectedFiles: [],
   charts: {
@@ -103,6 +104,22 @@ function parseNumeric(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function pickQHeader(headers, startCol) {
+  const byIndex = headers[Q_INDEX - startCol];
+  if (byIndex) {
+    const t = String(byIndex).trim();
+    if (t) return { header: byIndex, usedFallback: false };
+  }
+
+  const byName = headers.find((h) => String(h || "").trim().toUpperCase() === "Q");
+  if (byName) return { header: byName, usedFallback: false };
+
+  const fallback = headers.find((h) => String(h || "").trim() !== "");
+  if (fallback) return { header: fallback, usedFallback: true };
+
+  return { header: "", usedFallback: false };
+}
+
 function parseSheet(fileName, sheetName, sheet) {
   if (!sheet["!ref"]) return { headers: [], rows: [] };
 
@@ -114,6 +131,8 @@ function parseSheet(fileName, sheetName, sheet) {
     rawHeaders.push(getCellValue(sheet, headerRow, c));
   }
   const headers = ensureUniqueHeaders(rawHeaders);
+  const qPick = pickQHeader(headers, range.s.c);
+  if (!qPick.header) return { headers, rows: [], usedQFallback: false };
 
   const rows = [];
   for (let r = headerRow + 1; r <= range.e.r; r += 1) {
@@ -128,8 +147,7 @@ function parseSheet(fileName, sheetName, sheet) {
 
     if (!hasAny) continue;
 
-    const qHeader = headers[Q_INDEX - range.s.c];
-    const qValue = qHeader ? row[qHeader] : "";
+    const qValue = row[qPick.header];
     if (qValue === "" || qValue === null || qValue === undefined) continue;
 
     row.__Q = String(qValue).trim();
@@ -138,11 +156,48 @@ function parseSheet(fileName, sheetName, sheet) {
     rows.push(row);
   }
 
-  return { headers, rows };
+  return { headers, rows, usedQFallback: qPick.usedFallback };
 }
 
 function fileKey(file) {
   return `${file.name}::${file.size}::${file.lastModified}`;
+}
+
+function getFileExtension(fileName) {
+  const idx = String(fileName || "").lastIndexOf(".");
+  if (idx < 0) return "";
+  return String(fileName).slice(idx + 1).toLowerCase();
+}
+
+function arrayBufferToBinaryString(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let out = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const slice = bytes.subarray(i, i + chunk);
+    out += String.fromCharCode(...slice);
+  }
+  return out;
+}
+
+function readWorkbookWithFallback(fileName, data) {
+  const ext = getFileExtension(fileName);
+  const baseOpts = { cellDates: true, cellFormula: true };
+
+  try {
+    return XLSX.read(data, { ...baseOpts, type: "array" });
+  } catch (firstErr) {
+    try {
+      const binary = arrayBufferToBinaryString(data);
+      return XLSX.read(binary, { ...baseOpts, type: "binary" });
+    } catch (secondErr) {
+      if (ext === "csv") {
+        const text = new TextDecoder("utf-8").decode(new Uint8Array(data));
+        return XLSX.read(text, { ...baseOpts, type: "string" });
+      }
+      throw secondErr || firstErr;
+    }
+  }
 }
 
 function resetFileSelection() {
@@ -171,19 +226,30 @@ async function readFiles(files) {
   state.headers = [];
   state.headerLetters = [];
   state.formulaIgnored = 0;
+  state.qFallbackUsed = false;
   state.sourceFiles = [];
 
   const globalHeaders = new Set();
+  const processedFiles = [];
+  const failedFiles = [];
 
   for (const file of files) {
-    state.sourceFiles.push(file.name);
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data, { type: "array", cellDates: true, cellFormula: true });
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = readWorkbookWithFallback(file.name, data);
 
-    for (const sheetName of workbook.SheetNames) {
-      const parsed = parseSheet(file.name, sheetName, workbook.Sheets[sheetName]);
-      parsed.headers.forEach((h) => globalHeaders.add(h));
-      state.rows.push(...parsed.rows);
+      for (const sheetName of workbook.SheetNames) {
+        const parsed = parseSheet(file.name, sheetName, workbook.Sheets[sheetName]);
+        parsed.headers.forEach((h) => globalHeaders.add(h));
+        state.rows.push(...parsed.rows);
+        if (parsed.usedQFallback) state.qFallbackUsed = true;
+      }
+
+      state.sourceFiles.push(file.name);
+      processedFiles.push(file.name);
+    } catch (err) {
+      console.error(`Falha ao ler planilha: ${file.name}`, err);
+      failedFiles.push(file.name);
     }
   }
 
@@ -196,6 +262,8 @@ async function readFiles(files) {
       label: `${letter} - ${header || letter}`
     };
   });
+
+  return { processedFiles, failedFiles };
 }
 
 function aggregateByQ(rows, metric) {
@@ -369,12 +437,14 @@ function renderCompare(compareAgg, metric) {
 }
 
 function renderTable(rows) {
-  const maxRows = Number(els.maxRows.value);
-  const shown = rows.slice(0, maxRows);
+  const maxRowsValue = String(els.maxRows.value || "100");
+  const maxRows = maxRowsValue === "all" ? Infinity : Number(maxRowsValue);
+  const shown = Number.isFinite(maxRows) ? rows.slice(0, maxRows) : rows;
 
   if (!shown.length) {
     els.dataTable.innerHTML = "<thead><tr><th>Sem dados</th></tr></thead><tbody></tbody>";
-    els.tableMeta.textContent = "Nenhuma linha valida encontrada na coluna Q.";
+    const qText = state.qFallbackUsed ? "coluna Q (com fallback automatico)" : "coluna Q";
+    els.tableMeta.textContent = `Nenhuma linha valida encontrada na ${qText}.`;
     return;
   }
 
@@ -387,7 +457,18 @@ function renderTable(rows) {
   }).join("")}</tbody>`;
 
   els.dataTable.innerHTML = `${thead}${tbody}`;
-  els.tableMeta.textContent = `Mostrando ${shown.length} de ${rows.length} linhas validas pela coluna Q.`;
+  const qText = state.qFallbackUsed ? "coluna Q (com fallback automatico)" : "coluna Q";
+  els.tableMeta.textContent = `Mostrando ${shown.length} de ${rows.length} linhas validas pela ${qText}.`;
+}
+
+function ensureAllRowsOption() {
+  const hasAll = Array.from(els.maxRows.options).some((opt) => opt.value === "all");
+  if (hasAll) return;
+
+  const opt = document.createElement("option");
+  opt.value = "all";
+  opt.textContent = "Todas";
+  els.maxRows.insertBefore(opt, els.maxRows.firstChild);
 }
 
 function renderKpis(rows, agg) {
@@ -761,13 +842,22 @@ els.process.addEventListener("click", async () => {
   els.process.textContent = "Processando...";
 
   try {
-    await readFiles(files);
+    const { processedFiles, failedFiles } = await readFiles(files);
+    if (!processedFiles.length) {
+      alert("Nao foi possivel ler nenhuma planilha selecionada.");
+      return;
+    }
+
     fillMetricSelect(state.rows);
     fillSheetFilterSelect(state.rows);
     fillQFilterSelect(getRowsAfterSheetFilter(state.rows));
     fillAzColumnSelect();
     fillAzValueSelect(getRowsAfterQFilter(state.rows));
     runPipeline();
+
+    if (failedFiles.length) {
+      alert(`Algumas planilhas nao puderam ser lidas: ${failedFiles.join(", ")}`);
+    }
   } catch (err) {
     console.error(err);
     alert("Erro ao processar planilhas. Verifique o formato dos arquivos.");
@@ -818,4 +908,5 @@ els.download.addEventListener("click", exportSummary);
 els.clearData.addEventListener("click", clearAllData);
 
 renderSelectedFiles();
+ensureAllRowsOption();
 restorePersistedState();
