@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - PCP Master Grid</title>
+    <style>
+        :root {
+            --bg: #eef4e8;
+            --panel: rgba(255, 255, 255, 0.94);
+            --line: #d5dfca;
+            --text: #1f2c1f;
+            --muted: #60705f;
+            --accent: #2f7b3f;
+            --accent-2: #184f28;
+            --soft: #edf3e4;
+            --danger: #ab3f3f;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Poppins", "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(123, 179, 111, 0.32), transparent 32%),
+                radial-gradient(circle at bottom right, rgba(47, 107, 138, 0.18), transparent 25%),
+                linear-gradient(145deg, #f4f8ef, #e8f0df 52%, #dde9d0);
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .shell {
+            width: min(1080px, 100%);
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 18px;
+            align-items: stretch;
+        }
+
+        .hero,
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(27, 52, 29, 0.12);
+            backdrop-filter: blur(10px);
+        }
+
+        .hero {
+            padding: 30px;
+            background:
+                linear-gradient(140deg, rgba(47, 123, 63, 0.12), rgba(255, 255, 255, 0.96)),
+                var(--panel);
+            display: grid;
+            gap: 18px;
+        }
+
+        .eyebrow {
+            width: fit-content;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(47, 123, 63, 0.12);
+            color: var(--accent-2);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(32px, 4vw, 52px);
+            line-height: 1.02;
+        }
+
+        .lead {
+            margin: 0;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.6;
+            max-width: 54ch;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .hero-item {
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(47, 123, 63, 0.12);
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .hero-item strong {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+        .hero-item span {
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .card {
+            padding: 28px;
+            display: grid;
+            gap: 16px;
+        }
+
+        .mode-switch {
+            display: inline-flex;
+            gap: 8px;
+            padding: 6px;
+            border-radius: 16px;
+            background: rgba(237, 243, 228, 0.95);
+            border: 1px solid var(--line);
+            width: fit-content;
+        }
+
+        .mode-btn {
+            border: 0;
+            border-radius: 12px;
+            padding: 10px 14px;
+            background: transparent;
+            color: var(--muted);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .mode-btn.is-active {
+            background: #fff;
+            color: var(--accent-2);
+            box-shadow: 0 8px 18px rgba(27, 52, 29, 0.08);
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .muted {
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        form {
+            display: grid;
+            gap: 14px;
+        }
+
+        .field {
+            display: grid;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        input {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #fff;
+            color: var(--text);
+            padding: 14px 16px;
+            font: inherit;
+        }
+
+        input:focus {
+            outline: 2px solid rgba(47, 123, 63, 0.14);
+            border-color: rgba(47, 123, 63, 0.4);
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button,
+        .ghost-link {
+            border: 0;
+            border-radius: 14px;
+            padding: 12px 16px;
+            font: inherit;
+            font-weight: 700;
+        }
+
+        button {
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+        }
+
+        button:hover {
+            background: var(--accent-2);
+        }
+
+        .ghost-link {
+            border: 1px solid var(--line);
+            background: var(--soft);
+            color: var(--text);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .status {
+            min-height: 22px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .status.error {
+            color: var(--danger);
+        }
+
+        .session-box {
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 14px;
+            background: rgba(244, 247, 240, 0.9);
+            display: grid;
+            gap: 6px;
+        }
+
+        .session-box strong {
+            font-size: 15px;
+        }
+
+        .session-box span {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .helper {
+            margin: 0;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        @media (max-width: 880px) {
+            .shell {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <span class="eyebrow">Acesso PCP</span>
+            <div>
+                <h1>Entre no PCP Master Grid</h1>
+                <p class="lead">
+                    A tela de login salva o ultimo acesso localmente e sincroniza a sessao automaticamente com a pagina
+                    principal do PCP Master Grid.
+                </p>
+            </div>
+            <div class="hero-grid">
+                <article class="hero-item">
+                    <strong>Sessao sincronizada</strong>
+                    <span>O acesso fica salvo no navegador e a pagina principal atualiza o usuario em tempo real.</span>
+                </article>
+                <article class="hero-item">
+                    <strong>Entrada rapida</strong>
+                    <span>O ultimo nome usado reaparece automaticamente para acelerar os proximos acessos.</span>
+                </article>
+                <article class="hero-item">
+                    <strong>Controle local</strong>
+                    <span>Voce pode trocar de usuario ou encerrar a sessao direto do painel principal.</span>
+                </article>
+            </div>
+        </section>
+
+        <section class="card">
+            <div>
+                <h2>Login</h2>
+                <p class="muted">
+                    Crie uma conta local nesta maquina ou entre com uma conta ja cadastrada para acessar o painel.
+                </p>
+            </div>
+
+            <div class="mode-switch" aria-label="Modo de acesso">
+                <button id="loginModeBtn" class="mode-btn is-active" type="button">Entrar</button>
+                <button id="registerModeBtn" class="mode-btn" type="button">Criar conta</button>
+            </div>
+
+            <form id="loginForm">
+                <div class="field">
+                    <label for="userName">Usuario</label>
+                    <input id="userName" name="userName" type="text" autocomplete="username" placeholder="Digite seu usuario" required>
+                </div>
+                <div class="field">
+                    <label for="password">Senha</label>
+                    <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Digite sua senha" required>
+                </div>
+                <div class="field" id="confirmPasswordField" hidden>
+                    <label for="confirmPassword">Confirmar senha</label>
+                    <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Repita a senha">
+                </div>
+                <p class="helper" id="modeHelper">Entre com sua conta local para abrir o PCP Master Grid.</p>
+                <div class="actions">
+                    <button id="loginBtn" type="submit">Entrar no painel</button>
+                    <a class="ghost-link" href="pcpmastergrid.html">Abrir painel</a>
+                </div>
+            </form>
+
+            <div class="status" id="loginStatus"></div>
+
+            <div class="session-box" id="lastSessionBox">
+                <strong id="lastSessionTitle">Nenhuma sessao recente</strong>
+                <span id="lastSessionMeta">Entre para salvar o acesso automatico do PCP Master Grid.</span>
+            </div>
+        </section>
+    </main>
+
+    <script src="pcpmastergrid-auth.js"></script>
+    <script>
+        const form = document.getElementById("loginForm");
+        const userName = document.getElementById("userName");
+        const password = document.getElementById("password");
+        const confirmPassword = document.getElementById("confirmPassword");
+        const confirmPasswordField = document.getElementById("confirmPasswordField");
+        const loginStatus = document.getElementById("loginStatus");
+        const lastSessionTitle = document.getElementById("lastSessionTitle");
+        const lastSessionMeta = document.getElementById("lastSessionMeta");
+        const loginBtn = document.getElementById("loginBtn");
+        const loginModeBtn = document.getElementById("loginModeBtn");
+        const registerModeBtn = document.getElementById("registerModeBtn");
+        const modeHelper = document.getElementById("modeHelper");
+        let currentMode = "login";
+
+        function setStatus(message, isError) {
+            loginStatus.textContent = message || "";
+            loginStatus.className = isError ? "status error" : "status";
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            const isRegister = mode === "register";
+
+            loginModeBtn.classList.toggle("is-active", !isRegister);
+            registerModeBtn.classList.toggle("is-active", isRegister);
+            confirmPasswordField.hidden = !isRegister;
+            confirmPassword.required = isRegister;
+            document.querySelector(".card h2").textContent = isRegister ? "Criar conta" : "Login";
+            loginBtn.textContent = isRegister ? "Criar conta e entrar" : "Entrar no painel";
+            modeHelper.textContent = isRegister
+                ? "Crie um usuario local para esta maquina. Depois disso a conta podera entrar normalmente."
+                : "Entre com sua conta local para abrir o PCP Master Grid.";
+            password.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
+            setStatus("", false);
+        }
+
+        function syncLastSessionCard() {
+            const session = window.PCPAuth.readSession();
+            const hint = window.PCPAuth.getRememberedHint();
+            const users = window.PCPAuth.readUsers();
+
+            if (window.PCPAuth.isSessionValid(session)) {
+                lastSessionTitle.textContent = `Ultimo acesso: ${session.userName}`;
+                lastSessionMeta.textContent = `Ativo desde ${window.PCPAuth.formatDateTime(session.loggedInAt)} | Contas salvas: ${users.length}`;
+                if (!userName.value) userName.value = session.userName;
+                return;
+            }
+
+            if (hint && !userName.value) {
+                userName.value = hint;
+            }
+
+            lastSessionTitle.textContent = hint ? `Ultimo usuario lembrado: ${hint}` : "Nenhuma sessao recente";
+            lastSessionMeta.textContent = hint
+                ? `Digite a senha para restaurar o acesso automatico ao painel. Contas salvas: ${users.length}`
+                : `Crie sua primeira conta para salvar o acesso automatico do PCP Master Grid. Contas salvas: ${users.length}`;
+        }
+
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+
+            const name = userName.value.trim();
+            const pass = password.value.trim();
+
+            if (!name || !pass) {
+                setStatus("Preencha usuario e senha para entrar.", true);
+                return;
+            }
+
+            if (currentMode === "register") {
+                const confirm = confirmPassword.value.trim();
+                if (!confirm) {
+                    setStatus("Confirme a senha para criar a conta.", true);
+                    return;
+                }
+
+                if (confirm !== pass) {
+                    setStatus("A confirmacao da senha precisa ser igual.", true);
+                    return;
+                }
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = currentMode === "register" ? "Criando..." : "Entrando...";
+
+            let result;
+            if (currentMode === "register") {
+                const created = window.PCPAuth.createAccount(name, pass);
+                if (!created.ok) {
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = "Criar conta e entrar";
+                    setStatus(created.message, true);
+                    return;
+                }
+                result = window.PCPAuth.loginWithAccount(name, pass);
+            } else {
+                result = window.PCPAuth.loginWithAccount(name, pass);
+            }
+
+            if (!result.ok) {
+                loginBtn.disabled = false;
+                loginBtn.textContent = currentMode === "register" ? "Criar conta e entrar" : "Entrar no painel";
+                setStatus(result.message, true);
+                return;
+            }
+
+            window.PCPAuth.touchSession("pcpmastergrid.html");
+            setStatus(
+                currentMode === "register"
+                    ? `Conta criada para ${result.session.userName}. Redirecionando...`
+                    : `Acesso liberado para ${result.session.userName}. Redirecionando...`,
+                false
+            );
+            syncLastSessionCard();
+
+            window.setTimeout(() => {
+                window.location.href = "pcpmastergrid.html";
+            }, 350);
+        });
+
+        window.addEventListener("storage", syncLastSessionCard);
+        loginModeBtn.addEventListener("click", () => setMode("login"));
+        registerModeBtn.addEventListener("click", () => setMode("register"));
+
+        const existing = window.PCPAuth.readSession();
+        setMode("login");
+        syncLastSessionCard();
+        if (window.PCPAuth.isSessionValid(existing)) {
+            setStatus(`Sessao ativa encontrada para ${existing.userName}. Voce pode entrar direto no painel.`, false);
+        }
+    </script>
+</body>
+</html>

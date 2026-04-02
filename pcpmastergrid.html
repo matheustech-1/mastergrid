@@ -9,11 +9,24 @@
   <body>
     <div class="container">
       <section class="hero">
-        <h1>PCP Master Grid</h1>
-        <p>
-          Envie uma ou mais planilhas. O sistema gera graficos sempre usando a coluna Q como ancora e le apenas
-          valores das celulas, nunca formulas.
-        </p>
+        <div class="hero-top">
+          <div>
+            <h1>PCP Master Grid</h1>
+            <p>
+              Envie uma ou mais planilhas. O sistema gera graficos sempre usando a coluna Q como ancora e le apenas
+              valores das celulas, nunca formulas.
+            </p>
+          </div>
+          <aside class="session-card" id="sessionCard" hidden>
+            <span class="session-chip">Sessao ativa</span>
+            <strong id="sessionUser">Usuario</strong>
+            <span class="session-meta" id="sessionMeta">Sincronizando acesso...</span>
+            <div class="session-actions">
+              <a class="btn-soft btn-inline" href="login.html">Trocar acesso</a>
+              <button id="logoutBtn" class="btn-soft btn-inline" type="button">Sair</button>
+            </div>
+          </aside>
+        </div>
       </section>
 
       <section class="panel">
@@ -142,6 +155,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="pcpmastergrid-auth.js"></script>
     <script src="pcpmastergrid.js"></script>
   </body>
 </html>

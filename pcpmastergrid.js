@@ -47,6 +47,10 @@ const els = {
   tableMeta: document.getElementById("tableMeta"),
   dataTable: document.getElementById("dataTable"),
   compareTable: document.getElementById("compareTable"),
+  sessionCard: document.getElementById("sessionCard"),
+  sessionUser: document.getElementById("sessionUser"),
+  sessionMeta: document.getElementById("sessionMeta"),
+  logoutBtn: document.getElementById("logoutBtn"),
   statusBar: document.getElementById("statusBar"),
   statusTitle: document.getElementById("statusTitle"),
   statusMeta: document.getElementById("statusMeta"),
@@ -93,6 +97,121 @@ function yieldToUi() {
 
 function estimateCellCount(rows, headers) {
   return rows.length * Math.max(1, headers.length);
+}
+
+function getAuthApi() {
+  return window.PCPAuth || null;
+}
+
+function getCurrentSessionUser() {
+  const auth = getAuthApi();
+  if (!auth) return "";
+  const session = auth.readSession();
+  return auth.isSessionValid(session) ? String(session.userName || "").trim() : "";
+}
+
+function getUserScopedStorageKey(userName = getCurrentSessionUser()) {
+  const normalized = String(userName || "").trim().toLocaleLowerCase("pt-BR");
+  return normalized ? `${STORAGE_KEY}::${normalized}` : STORAGE_KEY;
+}
+
+function getSavedWorkspaceSummary(userName = getCurrentSessionUser()) {
+  const raw = localStorage.getItem(getUserScopedStorageKey(userName));
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      rows: Array.isArray(parsed.rows) ? parsed.rows.length : 0,
+      files: Array.isArray(parsed.sourceFiles) ? parsed.sourceFiles.length : 0,
+      savedAt: parsed.savedAt || ""
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+function requireSession() {
+  const auth = getAuthApi();
+  if (!auth) return null;
+
+  const session = auth.readSession();
+  if (auth.isSessionValid(session)) {
+    return auth.touchSession("pcpmastergrid.html") || session;
+  }
+
+  auth.clearSession();
+  window.location.href = "login.html";
+  return null;
+}
+
+function renderSessionInfo() {
+  const auth = getAuthApi();
+  if (!auth || !els.sessionCard || !els.sessionUser || !els.sessionMeta) return;
+
+  const session = auth.readSession();
+  if (!auth.isSessionValid(session)) {
+    auth.clearSession();
+    window.location.href = "login.html";
+    return;
+  }
+
+  els.sessionCard.hidden = false;
+  els.sessionUser.textContent = session.userName;
+  const workspace = getSavedWorkspaceSummary(session.userName);
+  const workspaceText = workspace
+    ? `Workspace salvo: ${workspace.files} arquivo(s), ${workspace.rows} linha(s) em ${auth.formatDateTime(workspace.savedAt)}`
+    : "Sem planilhas salvas para este login";
+  els.sessionMeta.textContent = `Sessao iniciada em ${auth.formatDateTime(session.loggedInAt)} | ${workspaceText}`;
+}
+
+function initAuthSync() {
+  const auth = getAuthApi();
+  if (!auth) return;
+
+  if (!requireSession()) return;
+  renderSessionInfo();
+
+  window.addEventListener("focus", () => {
+    const session = requireSession();
+    if (!session) return;
+    renderSessionInfo();
+  });
+
+  window.setInterval(() => {
+    const session = requireSession();
+    if (!session) return;
+    renderSessionInfo();
+  }, 60000);
+
+  window.addEventListener("storage", (event) => {
+    const workspaceKey = getUserScopedStorageKey();
+    const isSessionEvent = !event.key || event.key === auth.keys.session;
+    const isWorkspaceEvent = !event.key || event.key === workspaceKey;
+
+    if (!isSessionEvent && !isWorkspaceEvent) return;
+
+    if (isSessionEvent) {
+      const session = auth.readSession();
+      if (!auth.isSessionValid(session)) {
+        window.location.href = "login.html";
+        return;
+      }
+    }
+
+    if (isWorkspaceEvent) {
+      restorePersistedState();
+    }
+
+    renderSessionInfo();
+  });
+
+  if (els.logoutBtn) {
+    els.logoutBtn.addEventListener("click", () => {
+      auth.clearSession();
+      window.location.href = "login.html";
+    });
+  }
 }
 
 function ensureUniqueHeaders(headers) {
@@ -782,7 +901,11 @@ function savePersistedState() {
     return;
   }
 
+  const userName = getCurrentSessionUser();
+  const storageKey = getUserScopedStorageKey(userName);
   const payload = {
+    userName,
+    savedAt: new Date().toISOString(),
     rows: state.rows,
     headers: state.headers,
     headerLetters: state.headerLetters,
@@ -800,7 +923,8 @@ function savePersistedState() {
   };
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(storageKey, JSON.stringify(payload));
+    renderSessionInfo();
   } catch (err) {
     state.persistenceEnabled = false;
     clearPersistedState();
@@ -809,7 +933,8 @@ function savePersistedState() {
 }
 
 function clearPersistedState() {
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(getUserScopedStorageKey());
+  renderSessionInfo();
 }
 
 function applyUiFromSaved(savedUi) {
@@ -849,7 +974,17 @@ function applyUiFromSaved(savedUi) {
 }
 
 function restorePersistedState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const userName = getCurrentSessionUser();
+  const storageKey = getUserScopedStorageKey(userName);
+  let raw = localStorage.getItem(storageKey);
+  if (!raw && userName) {
+    const legacyRaw = localStorage.getItem(STORAGE_KEY);
+    if (legacyRaw) {
+      localStorage.setItem(storageKey, legacyRaw);
+      localStorage.removeItem(STORAGE_KEY);
+      raw = legacyRaw;
+    }
+  }
   if (!raw) return;
 
   try {
@@ -870,6 +1005,7 @@ function restorePersistedState() {
     fillAzValueSelect(getRowsAfterQFilter(state.rows));
     applyUiFromSaved(parsed.ui || {});
     runPipeline();
+    renderSessionInfo();
   } catch (err) {
     console.warn("Falha ao restaurar estado salvo.", err);
   }
@@ -927,6 +1063,7 @@ function clearAllData() {
   resetFileSelection();
   clearPersistedState();
   resetUiAfterClear();
+  renderSessionInfo();
 }
 
 function exportSummary() {
@@ -1065,4 +1202,5 @@ els.clearData.addEventListener("click", clearAllData);
 
 renderSelectedFiles();
 ensureAllRowsOption();
+initAuthSync();
 restorePersistedState();
