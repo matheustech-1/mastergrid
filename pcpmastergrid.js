@@ -1,5 +1,10 @@
 ﻿const Q_INDEX = 16;
 const STORAGE_KEY = "pcpmastergrid_saved_v1";
+const STORAGE_ROW_LIMIT = 8000;
+const STORAGE_CELL_LIMIT = 180000;
+const FILTER_OPTION_LIMIT = 1500;
+const CHART_ITEM_LIMIT = 40;
+const PARSE_YIELD_EVERY = 250;
 
 const state = {
   rows: [],
@@ -9,6 +14,8 @@ const state = {
   qFallbackUsed: false,
   sourceFiles: [],
   selectedFiles: [],
+  persistenceEnabled: true,
+  lastStatusMessage: "",
   charts: {
     count: null,
     share: null,
@@ -39,7 +46,11 @@ const els = {
   kpiFormula: document.getElementById("kpiFormula"),
   tableMeta: document.getElementById("tableMeta"),
   dataTable: document.getElementById("dataTable"),
-  compareTable: document.getElementById("compareTable")
+  compareTable: document.getElementById("compareTable"),
+  statusBar: document.getElementById("statusBar"),
+  statusTitle: document.getElementById("statusTitle"),
+  statusMeta: document.getElementById("statusMeta"),
+  statusFill: document.getElementById("statusFill")
 };
 
 function toColName(idx) {
@@ -53,6 +64,37 @@ function toColName(idx) {
   return s;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function updateStatus(title, meta = "", progress = null, keepVisible = true) {
+  state.lastStatusMessage = title;
+  els.statusTitle.textContent = title;
+  els.statusMeta.textContent = meta;
+  els.statusBar.hidden = !keepVisible;
+  els.statusFill.style.width = progress === null ? "0%" : `${Math.max(0, Math.min(100, progress))}%`;
+}
+
+function hideStatus() {
+  els.statusBar.hidden = true;
+}
+
+function yieldToUi() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+function estimateCellCount(rows, headers) {
+  return rows.length * Math.max(1, headers.length);
+}
+
 function ensureUniqueHeaders(headers) {
   const map = new Map();
   return headers.map((raw, index) => {
@@ -63,9 +105,18 @@ function ensureUniqueHeaders(headers) {
   });
 }
 
-function getCellValue(sheet, r, c) {
+function getSheetCell(sheet, r, c) {
+  if (Array.isArray(sheet)) {
+    const row = sheet[r];
+    return Array.isArray(row) ? row[c] : undefined;
+  }
+
   const addr = XLSX.utils.encode_cell({ r, c });
-  const cell = sheet[addr];
+  return sheet[addr];
+}
+
+function getCellValue(sheet, r, c) {
+  const cell = getSheetCell(sheet, r, c);
   if (!cell) return "";
 
   if (cell.f) {
@@ -120,8 +171,8 @@ function pickQHeader(headers, startCol) {
   return { header: "", usedFallback: false };
 }
 
-function parseSheet(fileName, sheetName, sheet) {
-  if (!sheet["!ref"]) return { headers: [], rows: [] };
+async function parseSheet(fileName, sheetName, sheet, progressInfo) {
+  if (!sheet["!ref"]) return { headers: [], rows: [], usedQFallback: false };
 
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const headerRow = range.s.r;
@@ -135,6 +186,8 @@ function parseSheet(fileName, sheetName, sheet) {
   if (!qPick.header) return { headers, rows: [], usedQFallback: false };
 
   const rows = [];
+  const totalRows = Math.max(0, range.e.r - headerRow);
+
   for (let r = headerRow + 1; r <= range.e.r; r += 1) {
     const row = {};
     let hasAny = false;
@@ -154,6 +207,17 @@ function parseSheet(fileName, sheetName, sheet) {
     row.__arquivo = fileName;
     row.__aba = sheetName;
     rows.push(row);
+
+    if ((r - headerRow) % PARSE_YIELD_EVERY === 0) {
+      const localProgress = totalRows ? ((r - headerRow) / totalRows) * 100 : 100;
+      const overallProgress = progressInfo.baseProgress + (localProgress * progressInfo.weight);
+      updateStatus(
+        "Processando planilhas pesadas",
+        `${fileName} - ${sheetName} (${rows.length.toLocaleString("pt-BR")} linhas validas)`,
+        overallProgress
+      );
+      await yieldToUi();
+    }
   }
 
   return { headers, rows, usedQFallback: qPick.usedFallback };
@@ -182,7 +246,7 @@ function arrayBufferToBinaryString(buffer) {
 
 function readWorkbookWithFallback(fileName, data) {
   const ext = getFileExtension(fileName);
-  const baseOpts = { cellDates: true, cellFormula: true };
+  const baseOpts = { cellDates: true, cellFormula: true, dense: true, sheetStubs: false };
 
   try {
     return XLSX.read(data, { ...baseOpts, type: "array" });
@@ -217,7 +281,7 @@ function renderSelectedFiles() {
   els.selectedFilesList.innerHTML = state.selectedFiles.map((file) => {
     const key = fileKey(file);
     const kb = Math.max(1, Math.round(file.size / 1024));
-    return `<li><span title="${file.name}">${file.name} (${kb} KB)</span><button type="button" class="btn-link" data-file-key="${key}">Retirar</button></li>`;
+    return `<li><span title="${escapeHtml(file.name)}">${escapeHtml(file.name)} (${kb} KB)</span><button type="button" class="btn-link" data-file-key="${escapeHtml(key)}">Retirar</button></li>`;
   }).join("");
 }
 
@@ -228,21 +292,39 @@ async function readFiles(files) {
   state.formulaIgnored = 0;
   state.qFallbackUsed = false;
   state.sourceFiles = [];
+  state.persistenceEnabled = true;
 
   const globalHeaders = new Set();
   const processedFiles = [];
   const failedFiles = [];
+  const totalFiles = files.length || 1;
 
-  for (const file of files) {
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+    const file = files[fileIndex];
+    const baseProgress = (fileIndex / totalFiles) * 100;
+    const fileWeight = 100 / totalFiles;
+
     try {
+      updateStatus(
+        "Abrindo arquivo",
+        `${file.name} (${fileIndex + 1}/${totalFiles})`,
+        baseProgress
+      );
+
       const data = await file.arrayBuffer();
       const workbook = readWorkbookWithFallback(file.name, data);
 
-      for (const sheetName of workbook.SheetNames) {
-        const parsed = parseSheet(file.name, sheetName, workbook.Sheets[sheetName]);
+      const totalSheets = workbook.SheetNames.length || 1;
+      for (let sheetIndex = 0; sheetIndex < workbook.SheetNames.length; sheetIndex += 1) {
+        const sheetName = workbook.SheetNames[sheetIndex];
+        const parsed = await parseSheet(file.name, sheetName, workbook.Sheets[sheetName], {
+          baseProgress: baseProgress + ((sheetIndex / totalSheets) * fileWeight),
+          weight: fileWeight / totalSheets
+        });
         parsed.headers.forEach((h) => globalHeaders.add(h));
         state.rows.push(...parsed.rows);
         if (parsed.usedQFallback) state.qFallbackUsed = true;
+        await yieldToUi();
       }
 
       state.sourceFiles.push(file.name);
@@ -262,6 +344,18 @@ async function readFiles(files) {
       label: `${letter} - ${header || letter}`
     };
   });
+
+  const estimatedCells = estimateCellCount(state.rows, state.headers);
+  if (state.rows.length > STORAGE_ROW_LIMIT || estimatedCells > STORAGE_CELL_LIMIT) {
+    state.persistenceEnabled = false;
+    clearPersistedState();
+  }
+
+  updateStatus(
+    "Leitura concluida",
+    `${state.rows.length.toLocaleString("pt-BR")} linhas prontas para analise`,
+    100
+  );
 
   return { processedFiles, failedFiles };
 }
@@ -332,6 +426,26 @@ function palette(size) {
   return Array.from({ length: size }, (_, i) => base[i % base.length]);
 }
 
+function compressAggForChart(items, labelKey) {
+  if (items.length <= CHART_ITEM_LIMIT) return items;
+
+  const visible = items.slice(0, CHART_ITEM_LIMIT - 1);
+  const tail = items.slice(CHART_ITEM_LIMIT - 1);
+  const other = tail.reduce((acc, item) => {
+    acc.count += item.count || 0;
+    acc.metricSum += item.metricSum || 0;
+    return acc;
+  }, { count: 0, metricSum: 0 });
+
+  visible.push({
+    [labelKey]: `Outros (${tail.length})`,
+    count: other.count,
+    metricSum: other.metricSum
+  });
+
+  return visible;
+}
+
 function destroyCharts() {
   Object.keys(state.charts).forEach((key) => {
     if (state.charts[key]) {
@@ -344,9 +458,14 @@ function destroyCharts() {
 function renderCharts(agg, metric) {
   destroyCharts();
 
-  const labels = agg.map((x) => x.q);
-  const counts = agg.map((x) => x.count);
-  const sums = agg.map((x) => Number(x.metricSum.toFixed(2)));
+  if (!agg.length) {
+    return;
+  }
+
+  const chartAgg = compressAggForChart(agg, "q");
+  const labels = chartAgg.map((x) => x.q);
+  const counts = chartAgg.map((x) => x.count);
+  const sums = chartAgg.map((x) => Number(x.metricSum.toFixed(2)));
   const colors = palette(labels.length);
 
   state.charts.count = new Chart(document.getElementById("chartCount"), {
@@ -385,9 +504,20 @@ function renderCharts(agg, metric) {
 }
 
 function renderCompare(compareAgg, metric) {
-  const labels = compareAgg.map((x) => x.origin);
-  const counts = compareAgg.map((x) => x.count);
-  const sums = compareAgg.map((x) => Number(x.metricSum.toFixed(2)));
+  if (state.charts.compare) {
+    state.charts.compare.destroy();
+    state.charts.compare = null;
+  }
+
+  if (!compareAgg.length) {
+    els.compareTable.innerHTML = "<thead><tr><th>Sem comparacao</th></tr></thead><tbody></tbody>";
+    return;
+  }
+
+  const chartAgg = compressAggForChart(compareAgg, "origin");
+  const labels = chartAgg.map((x) => x.origin);
+  const counts = chartAgg.map((x) => x.count);
+  const sums = chartAgg.map((x) => Number(x.metricSum.toFixed(2)));
   const colors = palette(labels.length);
 
   state.charts.compare = new Chart(document.getElementById("chartCompare"), {
@@ -415,24 +545,23 @@ function renderCompare(compareAgg, metric) {
     }
   });
 
-  if (!compareAgg.length) {
-    els.compareTable.innerHTML = "<thead><tr><th>Sem comparacao</th></tr></thead><tbody></tbody>";
-    return;
-  }
-
-  const rowsHtml = compareAgg.map((item) => {
-    return `<tr><td>${item.origin}</td><td>${item.count}</td><td>${item.metricSum.toFixed(2)}</td></tr>`;
+  const rowsHtml = compareAgg.slice(0, 500).map((item) => {
+    return `<tr><td>${escapeHtml(item.origin)}</td><td>${item.count}</td><td>${item.metricSum.toFixed(2)}</td></tr>`;
   }).join("");
+
+  const truncatedInfo = compareAgg.length > 500
+    ? '<tr><td colspan="3">Tabela limitada aos primeiros 500 grupos para manter a tela leve.</td></tr>'
+    : "";
 
   els.compareTable.innerHTML = `
     <thead>
       <tr>
         <th>Origem</th>
         <th>Quantidade</th>
-        <th>${metric ? `Soma (${metric})` : "Soma da metrica"}</th>
+        <th>${metric ? `Soma (${escapeHtml(metric)})` : "Soma da metrica"}</th>
       </tr>
     </thead>
-    <tbody>${rowsHtml}</tbody>
+    <tbody>${rowsHtml}${truncatedInfo}</tbody>
   `;
 }
 
@@ -450,15 +579,16 @@ function renderTable(rows) {
 
   const headers = ["__arquivo", "__aba", "__Q", ...state.headers.filter((h) => h !== "")];
 
-  const thead = `<thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>`;
+  const thead = `<thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>`;
   const tbody = `<tbody>${shown.map((row) => {
-    const tds = headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("");
+    const tds = headers.map((h) => `<td>${escapeHtml(row[h] ?? "")}</td>`).join("");
     return `<tr>${tds}</tr>`;
   }).join("")}</tbody>`;
 
   els.dataTable.innerHTML = `${thead}${tbody}`;
   const qText = state.qFallbackUsed ? "coluna Q (com fallback automatico)" : "coluna Q";
-  els.tableMeta.textContent = `Mostrando ${shown.length} de ${rows.length} linhas validas pela ${qText}.`;
+  const storageNote = state.persistenceEnabled ? "" : " Persistencia automatica desativada para evitar travamento.";
+  els.tableMeta.textContent = `Mostrando ${shown.length} de ${rows.length} linhas validas pela ${qText}.${storageNote}`;
 }
 
 function ensureAllRowsOption() {
@@ -501,39 +631,47 @@ function fillMetricSelect(rows) {
   }
 }
 
+function getUniqueValuesLimited(values) {
+  const unique = Array.from(new Set(values));
+  unique.sort((a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true, sensitivity: "base" }));
+  return {
+    values: unique.slice(0, FILTER_OPTION_LIMIT),
+    truncated: unique.length > FILTER_OPTION_LIMIT,
+    total: unique.length
+  };
+}
+
 function fillQFilterSelect(rows) {
   const previous = els.qFilter.value;
-  const values = Array.from(new Set(rows.map((r) => r.__Q))).sort((a, b) =>
-    String(a).localeCompare(String(b), "pt-BR", { numeric: true, sensitivity: "base" })
-  );
+  const result = getUniqueValuesLimited(rows.map((r) => r.__Q));
 
   els.qFilter.innerHTML = "";
   const all = document.createElement("option");
   all.value = "";
-  all.textContent = "Todos os valores de Q";
+  all.textContent = result.truncated
+    ? `Todos os valores de Q (primeiros ${FILTER_OPTION_LIMIT} de ${result.total})`
+    : "Todos os valores de Q";
   els.qFilter.appendChild(all);
 
-  values.forEach((value) => {
+  result.values.forEach((value) => {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = value;
     els.qFilter.appendChild(opt);
   });
 
-  if (values.includes(previous)) {
+  if (result.values.includes(previous)) {
     els.qFilter.value = previous;
   }
 }
 
 function fillSheetFilterSelect(rows) {
   const previous = els.sheetFilter.value;
-  const values = Array.from(
-    new Set(
-      rows
-        .map((r) => String(r.__aba || "").trim())
-        .filter((value) => value)
-    )
-  ).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" }));
+  const result = getUniqueValuesLimited(
+    rows
+      .map((r) => String(r.__aba || "").trim())
+      .filter((value) => value)
+  );
 
   els.sheetFilter.innerHTML = "";
   const all = document.createElement("option");
@@ -541,14 +679,14 @@ function fillSheetFilterSelect(rows) {
   all.textContent = "Todas as abas";
   els.sheetFilter.appendChild(all);
 
-  values.forEach((value) => {
+  result.values.forEach((value) => {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = value;
     els.sheetFilter.appendChild(opt);
   });
 
-  if (values.includes(previous)) {
+  if (result.values.includes(previous)) {
     els.sheetFilter.value = previous;
   }
 }
@@ -593,23 +731,25 @@ function fillAzValueSelect(rows) {
 
   if (!selectedHeader) return;
 
-  const values = Array.from(
-    new Set(
-      rows
-        .map((row) => row[selectedHeader])
-        .filter((value) => value !== "" && value !== null && value !== undefined)
-        .map((value) => String(value))
-    )
-  ).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" }));
+  const result = getUniqueValuesLimited(
+    rows
+      .map((row) => row[selectedHeader])
+      .filter((value) => value !== "" && value !== null && value !== undefined)
+      .map((value) => String(value))
+  );
 
-  values.forEach((value) => {
+  if (result.truncated) {
+    all.textContent = `Todos os valores (primeiros ${FILTER_OPTION_LIMIT} de ${result.total})`;
+  }
+
+  result.values.forEach((value) => {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = value;
     els.azValue.appendChild(opt);
   });
 
-  if (values.includes(previous)) {
+  if (result.values.includes(previous)) {
     els.azValue.value = previous;
   }
 }
@@ -637,7 +777,10 @@ function getFilteredRows(rows) {
 }
 
 function savePersistedState() {
-  if (!state.rows.length) return;
+  if (!state.rows.length || !state.persistenceEnabled) {
+    if (!state.persistenceEnabled) clearPersistedState();
+    return;
+  }
 
   const payload = {
     rows: state.rows,
@@ -659,6 +802,8 @@ function savePersistedState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
+    state.persistenceEnabled = false;
+    clearPersistedState();
     console.warn("Falha ao salvar estado no localStorage.", err);
   }
 }
@@ -716,6 +861,7 @@ function restorePersistedState() {
     state.headerLetters = Array.isArray(parsed.headerLetters) ? parsed.headerLetters : [];
     state.formulaIgnored = Number(parsed.formulaIgnored || 0);
     state.sourceFiles = Array.isArray(parsed.sourceFiles) ? parsed.sourceFiles : [];
+    state.persistenceEnabled = true;
 
     fillMetricSelect(state.rows);
     fillSheetFilterSelect(state.rows);
@@ -741,6 +887,12 @@ function runPipeline() {
   renderCompare(compareAgg, metric);
   renderTable(filteredRows);
   savePersistedState();
+
+  const extras = [];
+  if (!state.persistenceEnabled) extras.push("persistencia automatica desligada");
+  if (agg.length > CHART_ITEM_LIMIT) extras.push(`graficos resumidos em top ${CHART_ITEM_LIMIT}`);
+  const meta = extras.length ? extras.join(" | ") : "analise pronta";
+  updateStatus("Painel atualizado", meta, 100, true);
 }
 
 function resetUiAfterClear() {
@@ -762,6 +914,7 @@ function resetUiAfterClear() {
   els.kpiQ.textContent = "0";
   els.kpiGroups.textContent = "0";
   els.kpiFormula.textContent = "0";
+  hideStatus();
 }
 
 function clearAllData() {
@@ -770,6 +923,7 @@ function clearAllData() {
   state.headerLetters = [];
   state.formulaIgnored = 0;
   state.sourceFiles = [];
+  state.persistenceEnabled = true;
   resetFileSelection();
   clearPersistedState();
   resetUiAfterClear();
@@ -840,6 +994,7 @@ els.process.addEventListener("click", async () => {
 
   els.process.disabled = true;
   els.process.textContent = "Processando...";
+  updateStatus("Preparando leitura", `${files.length} arquivo(s) na fila`, 0);
 
   try {
     const { processedFiles, failedFiles } = await readFiles(files);
@@ -855,14 +1010,15 @@ els.process.addEventListener("click", async () => {
     fillAzValueSelect(getRowsAfterQFilter(state.rows));
     runPipeline();
 
-    if (failedFiles.length) {
-      alert(`Algumas planilhas nao puderam ser lidas: ${failedFiles.join(", ")}`);
-    }
-  } catch (err) {
-    console.error(err);
-    alert("Erro ao processar planilhas. Verifique o formato dos arquivos.");
-  } finally {
-    els.process.disabled = false;
+      if (failedFiles.length) {
+        alert(`Algumas planilhas nao puderam ser lidas: ${failedFiles.join(", ")}`);
+      }
+    } catch (err) {
+      console.error(err);
+      updateStatus("Falha ao processar", "Verifique o formato das planilhas e tente novamente.", 0);
+      alert("Erro ao processar planilhas. Verifique o formato dos arquivos.");
+    } finally {
+      els.process.disabled = false;
     els.process.textContent = "Gerar graficos";
   }
 });
